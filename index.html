@@ -1,50 +1,135 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
-    <meta charset="utf-8">
     <link rel="stylesheet" type="text/css" href="https://cdn.mxpnl.com/libs/mixpanel-platform/css/reset.css">
     <link rel="stylesheet" type="text/css" href="https://cdn.mxpnl.com/libs/mixpanel-platform/build/mixpanel-platform.v0.latest.min.css">
     <script src="https://cdn.mxpnl.com/libs/mixpanel-platform/build/mixpanel-platform.v0.latest.min.js"></script>
   </head>
   <body class="mixpanel-platform-body">
     <div class="mixpanel-platform-section">
-      <div id="eventSelect" style="float: left;"></div>
-      <div id="by" class="mixpanel-platform-label" style="margin-left: 10px; display: none;">by</div>
-      <div id="propSelect" style="float: left;"></div>
       <div id="dateSelect" style="float: right;"></div>
       <div style="clear: both;"></div>
       <div id="graph"></div>
     </div>
-    <div id="table"></div>
+    <div id="conversion" style="float: left; display: none;">Conversion:  </div>
+    <div id="percent" style="float: left; display: none;"></div>
     <script>
-      var eventSelect = $('#eventSelect').MPEventSelect();
-      var propSelect  = $('#propSelect').MPPropertySelect();
-      var dateSelect  = $('#dateSelect').MPDatepicker();
-      var eventGraph  = $('#graph').MPChart({chartType: 'line'});
-      var eventTable  = $('#table').MPTable({
-        showPercentages: true,
-        firstColHeader: 'Event'
-      });
-
-      var runQuery = function() {
-        var eventName = eventSelect.MPEventSelect('value'),
-            propName  = propSelect.MPPropertySelect('value'),
-            dateRange = dateSelect.MPDatepicker('value');
-
-        if (eventName) {
-          MP.api.segment(eventName, propName, dateRange).done(function(results) {
-            eventGraph.MPChart('setData', results);
-            eventTable.MPTable('setData', results);
+      MP.api.ready(function() {
+        var dateSelect  = $('#dateSelect').MPDatepicker();
+        var eventGraph  = $('#graph').MPChart({chartType: 'bar', stacked: true});
+        
+        var params = {
+          from: moment().subtract(1, 'months'),
+          to: moment(),
+          event: 'Video Play',
+          unit: 'month',
+          addiction_unit: 'day',
+          segment_method: 'first'
+        }
+        
+        //only used for addiction totals
+        var params_all = {
+          from: moment().subtract(1, 'months'),
+          to: moment(),
+          unit: 'month',
+          addiction_unit: 'day',
+          segment_method: 'first'
+        }
+        
+        //only used for the 'Pulse' totals
+        var params_seg = {
+          from: moment().subtract(1, 'months'),
+          to: moment(),
+          unit: 'month',
+          type: 'unique'
+        }
+        var runQuery = function() {
+          var dateRange = dateSelect.MPDatepicker('value');
+          
+          params['from'] = dateRange.from.toISOString().substring(0, 10);
+          params['to'] = dateRange.to.toISOString().substring(0, 10);
+          params_all['from'] = dateRange.from.toISOString().substring(0, 10);
+          params_all['to'] = dateRange.to.toISOString().substring(0, 10);
+          params_seg['from'] = dateRange.from.toISOString().substring(0, 10);
+          params_seg['to'] = dateRange.to.toISOString().substring(0, 10);
+          MP.api.query('/api/2.0/retention/addiction/', params).done(function(results){
+            console.log(results.data);
+            processResults(results.data);
           });
         }
-      };
-      eventSelect.on('change', function(e, eventName) {
-        propSelect.MPPropertySelect('setEvent', eventName);
-        $("#by").show();
+        
+        var processResults = function(data) {
+          var finalResults = {};
+          finalResults['daily'] = {};
+          finalResults['several'] = {};
+          finalResults['weekly'] = {};
+          finalResults['couple'] = {};
+          finalResults['once'] = {};
+          finalResults['none'] = {};
+          var daily = 0;
+          var several = 0;
+          var weekly = 0;
+          var couple = 0;
+          var once = 0;
+          var sums = 0;
+          var dates = Object.keys(data);
+          for(i=0; i<dates.length; i++){
+            //do this same thing for each month
+            //define daily as 4+ times weekly
+            daily += data[dates[i]][17];
+            //define several per week as 1+ - 4 times a week
+            several += (data[dates[i]][16] - data[dates[i]][17]);
+            //define weekly as once per week
+            weekly += (data[dates[i]][4] - data[dates[i]][16]);
+            //define couple a month as 2-3
+            couple += (data[dates[i]][1] - data[dates[i]][4]);
+            //define once as only once
+            once += (data[dates[i]][0] - data[dates[i]][1]);
+          }
+          finalResults['daily']['Video Play'] = daily;
+          finalResults['several']['Video Play'] = several;
+          finalResults['weekly']['Video Play'] = weekly;
+          finalResults['couple']['Video Play'] = couple;
+          finalResults['once']['Video Play'] = once;
+          finalResults['none']['Video Play'] = 0;
+          //get totals using addiction
+          MP.api.query('/api/2.0/retention/addiction/', params_all).done(function(results){
+            console.log(results.data);
+            var newdata = results.data;
+            finalizeResults(finalResults, newdata);
+          });
+          // if you wanted to use Pulse instead for totals
+          /*MP.api.segment('Pulse', params_seg).done(function(results){
+            console.log(results.values());
+            var newdata = results.values()['Pulse'];
+            finalizeResults(finalResults, newdata);
+          });*/
+        }
+        
+        var finalizeResults = function(finalResults, newdata) {
+          var sums = 0;
+          var dates = Object.keys(newdata);
+          //this sums the totals for addiction
+          for(i=0; i<dates.length; i++){
+            sums += newdata[dates[i]][0];
+          }
+          //totals summed for Pulse instead
+          /*for(i=0; i<dates.length; i++){
+            sums += newdata[dates[i]];
+          }*/
+          finalResults['daily']['Video Play'] = finalResults['daily']['Video Play'] / sums * 100;
+          finalResults['several']['Video Play'] = finalResults['several']['Video Play'] / sums * 100;
+          finalResults['weekly']['Video Play'] = finalResults['weekly']['Video Play'] / sums * 100;
+          finalResults['couple']['Video Play'] = finalResults['couple']['Video Play'] / sums * 100;
+          finalResults['once']['Video Play'] = finalResults['once']['Video Play'] / sums * 100;
+          finalResults['none']['Video Play'] = 100 - (finalResults['daily']['Video Play'] + finalResults['several']['Video Play'] + finalResults['weekly']['Video Play'] + finalResults['couple']['Video Play'] + finalResults['once']['Video Play']);
+          eventGraph.MPChart('setData', finalResults);
+        }
+        
         runQuery();
+        
+        dateSelect.on('change', runQuery);
       });
-      propSelect.on('change', runQuery);
-      dateSelect.on('change', runQuery);
     </script>
   </body>
 </html>
