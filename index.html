@@ -123,6 +123,7 @@
           finalResults['couple']['Video Play'] = finalResults['couple']['Video Play'] / sums * 100;
           finalResults['once']['Video Play'] = finalResults['once']['Video Play'] / sums * 100;
           finalResults['none']['Video Play'] = 100 - (finalResults['daily']['Video Play'] + finalResults['several']['Video Play'] + finalResults['weekly']['Video Play'] + finalResults['couple']['Video Play'] + finalResults['once']['Video Play']);
+          console.log(finalResults);
           eventGraph.MPChart('setData', finalResults);
         }
         
